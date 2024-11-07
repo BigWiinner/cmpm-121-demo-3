@@ -18,7 +18,7 @@ const OAKES_CLASSROOM = leaflet.latLng(36.98949379578401, -122.06277128548504);
 const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_CELL_SIZE = 0.0001;
 const CACHE_PROBABILITY = 0.1;
-const CELL_STEPS = 8;
+const CELL_BLOCKS = 8;
 
 // Generate map object
 const map = leaflet.map(document.getElementById("map")!, {
@@ -117,8 +117,8 @@ function spawnCache(i: number, j: number): void {
 // Generate caches based off of luck function from luck.ts.
 // If luck generates a value small enough,
 // spawn a cache at spot determined with i, j on the map.
-for (let i = -CELL_STEPS; i <= CELL_STEPS; i++) {
-  for (let j = -CELL_STEPS; j <= CELL_STEPS; j++) {
+for (let i = -CELL_BLOCKS; i <= CELL_BLOCKS; i++) {
+  for (let j = -CELL_BLOCKS; j <= CELL_BLOCKS; j++) {
     if (luck([i, j].toString()) < CACHE_PROBABILITY) {
       spawnCache(i, j);
     }
