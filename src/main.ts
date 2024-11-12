@@ -12,11 +12,16 @@ import "./leafletWorkaround.ts";
 import luck from "./luck.ts";
 
 // Represents geographic grid
-//import { Board } from "./board.ts";
+import { Board } from "./board.ts";
+
+interface Cell {
+  readonly i: number;
+  readonly j: number;
+}
 
 // CMPM 121 lecture hall, used for the center of the map
 //const NULL_ISLAND = leaflet.latLng(0, 0);
-const OAKES_CLASSROOM = leaflet.latLng(36.98949379578401, -122.06277128548504);
+const OAKES_CLASSROOM = leaflet.latLng(36.9894, -122.0627);
 
 // Tunable parameters
 const GAMEPLAY_ZOOM_LEVEL = 19;
@@ -47,16 +52,51 @@ leaflet
 // playerPoints to be changed for D3.b with an inventory where each coin
 // collected is unique.
 // For now, all coins collected are interchangeable integers.
-let playerPoints = 0;
-const pointsDisplay = document.getElementById("points")!;
-pointsDisplay.innerHTML = `${playerPoints} points`;
+//let playerPoints = 0;
+//const pointsDisplay = document.getElementById("points")!;
+//pointsDisplay.innerHTML = `${playerPoints} points`;
 
 // spawn player at a predetermined spot.
 // player controls to be implemented in D3.c
 const playerIcon = leaflet.marker(OAKES_CLASSROOM);
 playerIcon.addTo(map);
-playerIcon.bindPopup(`Inventory: ${playerPoints} coins`);
+playerIcon.bindPopup(
+  `Location: ${Math.round(OAKES_CLASSROOM.lat * 1e4)}, 
+  ${Math.round(OAKES_CLASSROOM.lng * 1e4)}`,
+);
 
+const origin = OAKES_CLASSROOM;
+const grid = new Board(TILE_CELL_SIZE, CELL_BLOCKS);
+const cell = grid.getCellForPoint({ i: origin.lat * 1e4, j: origin.lng * 1e4 });
+const arr = grid.getCellsNearPoint(cell);
+
+for (let i = 0; i < arr.length; i++) {
+  if (luck([arr[i].i * 1e-4, arr[i].j * 1e-4].toString()) < CACHE_PROBABILITY) {
+    spawnCache(arr[i]);
+  }
+}
+
+function spawnCache(obj: Cell): void {
+  const aBox = grid.getCellBounds(obj);
+  const rect = leaflet.rectangle(aBox, { color: "#483aea", weight: 1 });
+  rect.addTo(map);
+
+  rect.bindPopup((): HTMLDivElement => {
+    const rectInfo = document.createElement("div");
+    rectInfo.innerHTML = `<div>${Math.round(obj.i)}, ${Math.round(obj.j)}</div>
+      <button id=Take>Collect</button>`;
+
+    rectInfo.querySelector<HTMLButtonElement>("#Take")!.addEventListener(
+      "click",
+      () => {
+        console.log("CLICK!");
+      },
+    );
+    return rectInfo;
+  });
+}
+
+/*
 function spawnCache(i: number, j: number): void {
   const origin = OAKES_CLASSROOM;
 
@@ -117,6 +157,7 @@ function spawnCache(i: number, j: number): void {
     return rectInfo;
   });
 }
+  */
 
 // Generate caches based off of luck function from luck.ts.
 // If luck generates a value small enough,
@@ -124,7 +165,7 @@ function spawnCache(i: number, j: number): void {
 for (let i = -CELL_BLOCKS; i <= CELL_BLOCKS; i++) {
   for (let j = -CELL_BLOCKS; j <= CELL_BLOCKS; j++) {
     if (luck([i, j].toString()) < CACHE_PROBABILITY) {
-      spawnCache(i, j);
+      //spawnCache(i, j);
     }
   }
 }

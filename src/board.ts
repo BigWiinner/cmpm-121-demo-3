@@ -27,16 +27,16 @@ export class Board {
   }
 
   getCellForPoint(point: leaflet.latLng): Cell {
-    return this.getCanonicalCell({ i: point.lat, j: point.lng });
+    return this.getCanonicalCell({ i: point.i, j: point.j });
   }
 
   getCellBounds(cell: Cell): leaflet.latLngBounds {
     return leaflet.latLngBounds([[
-      cell.i + this.tileWidth,
-      cell.j + this.tileWidth,
+      cell.i * this.tileWidth,
+      cell.j * this.tileWidth,
     ], [
-      cell.i - this.tileWidth,
-      cell.j - this.tileWidth,
+      cell.i * this.tileWidth + 1e-4,
+      cell.j * this.tileWidth + 1e-4,
     ]]);
   }
 
@@ -44,8 +44,8 @@ export class Board {
     const resultCells: Cell[] = [];
     const originCell = this.getCellForPoint(point);
     const tvr = this.tileVisibilityRadius;
-    for (let i = -tvr; i <= tvr; i++) {
-      for (let j = -tvr; j <= tvr; j++) {
+    for (let i = -tvr; i < tvr; i++) {
+      for (let j = -tvr; j < tvr; j++) {
         resultCells.push(
           this.getCanonicalCell({
             i: originCell.i + i,
