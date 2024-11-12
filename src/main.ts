@@ -19,12 +19,20 @@ interface Cell {
   readonly j: number;
 }
 
+interface Coin {
+  cell: Cell;
+  serial: string;
+}
+
+interface Cache {
+  coins: Coin[];
+}
+
 // CMPM 121 lecture hall, used for the center of the map
-//const NULL_ISLAND = leaflet.latLng(0, 0);
 const OAKES_CLASSROOM = leaflet.latLng(36.9894, -122.0627);
 
 // Tunable parameters
-const GAMEPLAY_ZOOM_LEVEL = 19;
+const GAMEPLAY_ZOOM_LEVEL = 18.75;
 const TILE_CELL_SIZE = 0.0001;
 const CACHE_PROBABILITY = 0.1;
 const CELL_BLOCKS = 8;
@@ -55,6 +63,9 @@ leaflet
 //let playerPoints = 0;
 //const pointsDisplay = document.getElementById("points")!;
 //pointsDisplay.innerHTML = `${playerPoints} points`;
+const playerInventory: Cache = { coins: [] };
+const inventoryDisplay = document.getElementById("inventory")!;
+inventoryDisplay.innerHTML = `Inventory:<br> ${playerInventory.coins}`;
 
 // spawn player at a predetermined spot.
 // player controls to be implemented in D3.c
@@ -67,105 +78,63 @@ playerIcon.bindPopup(
 
 const origin = OAKES_CLASSROOM;
 const grid = new Board(TILE_CELL_SIZE, CELL_BLOCKS);
-const cell = grid.getCellForPoint({ i: origin.lat * 1e4, j: origin.lng * 1e4 });
+const cell = grid.getCellForPoint({
+  i: Math.floor(origin.lat * 1e4),
+  j: Math.floor(origin.lng * 1e4),
+});
 const arr = grid.getCellsNearPoint(cell);
 
-for (let i = 0; i < arr.length; i++) {
-  if (luck([arr[i].i * 1e-4, arr[i].j * 1e-4].toString()) < CACHE_PROBABILITY) {
-    spawnCache(arr[i]);
-  }
-}
-
+let serialNum = 0;
 function spawnCache(obj: Cell): void {
   const aBox = grid.getCellBounds(obj);
   const rect = leaflet.rectangle(aBox, { color: "#483aea", weight: 1 });
   rect.addTo(map);
 
+  const coinCount = Math.floor(
+    luck([obj.i, obj.j, "initialValue"].toString()) * 10,
+  );
+  const rectCache: Cache = { coins: [] };
+  for (let i = 0; i < coinCount; i++) {
+    const coinIdentity: Coin = { cell: obj, serial: `${serialNum}` };
+    serialNum++;
+    rectCache.coins.push(coinIdentity);
+  }
+
   rect.bindPopup((): HTMLDivElement => {
     const rectInfo = document.createElement("div");
-    rectInfo.innerHTML = `<div>${Math.round(obj.i)}, ${Math.round(obj.j)}</div>
-      <button id=Take>Collect</button>`;
+    rectInfo.innerHTML = `<div>Location:${Math.round(obj.i)}, ${
+      Math.round(obj.j)
+    }</div><button id=Give>Deposit</button>`;
+    for (let i = 0; i < rectCache.coins.length; i++) {
+      const container = document.createElement("div");
+      const serialString = `${rectCache.coins[i].cell.i}${
+        rectCache.coins[i].cell.j
+      }:${rectCache.coins[i].serial}`;
+      container.innerHTML = `${serialString}  <button id=Take>Collect</button>`;
 
-    rectInfo.querySelector<HTMLButtonElement>("#Take")!.addEventListener(
-      "click",
-      () => {
-        console.log("CLICK!");
-      },
-    );
-    return rectInfo;
-  });
-}
-
-/*
-function spawnCache(i: number, j: number): void {
-  const origin = OAKES_CLASSROOM;
-
-  // creates a boundary on the map to store coins
-  // based off of the arguments given to the function
-  const aBox = leaflet.latLngBounds([[
-    origin.lat + i * TILE_CELL_SIZE,
-    origin.lng + j * TILE_CELL_SIZE,
-  ], [
-    origin.lat + (i + 1) * TILE_CELL_SIZE,
-    origin.lng + (j + 1) * TILE_CELL_SIZE,
-  ]]);
-  const rect = leaflet.rectangle(aBox, { color: "#483aea", weight: 1 });
-  rect.addTo(map);
-
-  // coinCount to be changed for D3.b, when the parameters change to have
-  // each coin generated to be unique.
-  // For now, all coins generated are interchangeable integers.
-  let coinCount = Math.floor(luck([i, j, "initialValue"].toString()) * 100);
-
-  // Display div and button elements when a cache bound is clicked
-  rect.bindPopup((): HTMLDivElement => {
-    const rectInfo = document.createElement("div");
-    rectInfo.innerHTML =
-      `<div>There are <span id=value>${coinCount}</span> coins at ${i} ${j}.</div>
-      <button id=Take>Collect</button><button id=Give>Desposit</button>`;
-
-    // Allow player to collect coins at cache
-    rectInfo.querySelector<HTMLButtonElement>("#Take")!.addEventListener(
-      "click",
-      () => {
-        if (coinCount) {
-          coinCount--;
-          rectInfo.querySelector<HTMLButtonElement>("#value")!.innerHTML =
-            coinCount.toString();
-          playerPoints++;
-          playerIcon.bindPopup(`Inventory: ${playerPoints}`);
-          pointsDisplay.innerHTML = `${playerPoints} points`;
-        }
-      },
-    );
-
-    // Allow player to deposit coins at cache
-    rectInfo.querySelector<HTMLButtonElement>("#Give")!.addEventListener(
-      "click",
-      () => {
-        if (playerPoints) {
-          coinCount++;
-          rectInfo.querySelector<HTMLButtonElement>("#value")!.innerHTML =
-            coinCount.toString();
-          playerPoints--;
-          playerIcon.bindPopup(`Inventory: ${playerPoints}`);
-          pointsDisplay.innerHTML = `${playerPoints} points`;
-        }
-      },
-    );
-
-    return rectInfo;
-  });
-}
-  */
-
-// Generate caches based off of luck function from luck.ts.
-// If luck generates a value small enough,
-// spawn a cache at spot determined with i, j on the map.
-for (let i = -CELL_BLOCKS; i <= CELL_BLOCKS; i++) {
-  for (let j = -CELL_BLOCKS; j <= CELL_BLOCKS; j++) {
-    if (luck([i, j].toString()) < CACHE_PROBABILITY) {
-      //spawnCache(i, j);
+      container.querySelector<HTMLButtonElement>("#Take")!.addEventListener(
+        "click",
+        () => {
+          playerInventory.coins.push(rectCache.coins[i]);
+          inventoryDisplay.innerHTML += `${serialString}<br>`;
+        },
+      );
+      rectInfo.querySelector<HTMLButtonElement>("#Give")!.addEventListener(
+        "click",
+        () => {
+          if (playerInventory.coins) {
+            rectCache.coins.push(playerInventory.coins.pop()!);
+          }
+        },
+      );
+      rectInfo.appendChild(container);
     }
+    return rectInfo;
+  });
+}
+
+for (let i = 0; i < arr.length; i++) {
+  if (luck([arr[i].i * 1e-4, arr[i].j * 1e-4].toString()) < CACHE_PROBABILITY) {
+    spawnCache(arr[i]);
   }
 }
