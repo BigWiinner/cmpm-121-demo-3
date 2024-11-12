@@ -11,7 +11,11 @@ import "./leafletWorkaround.ts";
 // Deterministic random number generator
 import luck from "./luck.ts";
 
+// Represents geographic grid
+//import { Board } from "./board.ts";
+
 // CMPM 121 lecture hall, used for the center of the map
+//const NULL_ISLAND = leaflet.latLng(0, 0);
 const OAKES_CLASSROOM = leaflet.latLng(36.98949379578401, -122.06277128548504);
 
 // Tunable parameters
