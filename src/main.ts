@@ -217,15 +217,9 @@ document.querySelector<HTMLButtonElement>("#east")!.addEventListener(
 // create caches with unique coins
 let serialNum = 0;
 let rectArr: leaflet.Rectangle[] = [];
+
 const cacheMomentos: Map<string, string> = new Map();
-function spawnCache(obj: Cell): void {
-  const aBox = grid.getCellBounds(obj);
-
-  // create new cache if it does not already exist
-  //if (!cacheMomentos.get(`${obj.i}${obj.j}`)) {
-  rectArr.push(leaflet.rectangle(aBox, { color: "#483aea", weight: 1 }));
-  rectArr[rectArr.length - 1].addTo(map);
-
+function spawnNewCache(obj: Cell): void {
   const coinCount = Math.floor(
     luck([obj.i, obj.j, "initialValue"].toString()) * 10,
   );
@@ -236,90 +230,106 @@ function spawnCache(obj: Cell): void {
     geoCache: new Geocache(obj.i, obj.j, serialList),
   };
 
-  if (!cacheMomentos.get(`${obj.i}${obj.j}`)) {
-    for (let i = 0; i < coinCount; i++) {
-      const coinIdentity: Coin = { cell: obj, serial: `${serialNum}` };
-      serialNum++;
-      rectCache.coins.push(coinIdentity);
-      rectCache.geoCache?.serials.push(
-        `${rectCache.coins[i].cell.i}${rectCache.coins[i].cell.j}:${
-          rectCache.coins[i].serial
-        }`,
-      );
-      cacheMomentos.set(`${obj.i}${obj.j}`, rectCache.geoCache!.toMomento());
-    }
-    rectArr[rectArr.length - 1].bindPopup((): HTMLDivElement => {
-      const rectInfo = document.createElement("div");
-      rectInfo.innerHTML = `<div>Location:${Math.round(obj.i)}, ${
-        Math.round(obj.j)
-      }</div><button id=Give>Deposit</button><br>`;
-      for (let i = 0; i < rectCache.coins.length; i++) {
-        const serialString = `${rectCache.coins[i].cell.i}${
-          rectCache.coins[i].cell.j
-        }:${rectCache.coins[i].serial}`;
-        const container = document.createElement("div");
-        container.innerHTML =
-          `${serialString} <button id=Take>Collect</button>`;
+  for (let i = 0; i < coinCount; i++) {
+    const coinIdentity: Coin = { cell: obj, serial: `${serialNum}` };
+    serialNum++;
+    rectCache.coins.push(coinIdentity);
+    rectCache.geoCache?.serials.push(
+      `${rectCache.coins[i].serial}`,
+    );
+    cacheMomentos.set(`${obj.i}${obj.j}`, rectCache.geoCache!.toMomento());
+  }
+  addRectFunctionality(obj, rectCache);
+}
 
-        container.querySelector<HTMLButtonElement>("#Take")!.addEventListener(
-          "click",
-          () => {
-            const splicedCoin = rectCache.coins.splice(i, 1)[0];
-            rectCache.geoCache?.serials.splice(i, 1);
-            cacheMomentos.set(
-              `${obj.i}${obj.j}`,
-              rectCache.geoCache!.toMomento(),
-            );
-            rectInfo.removeChild(container);
+function respawnCache(GeoString: string) {
+  const cacheData = new Geocache(0, 0, [""]);
+  cacheData.fromMomento(GeoString);
+  const cell: Cell = { i: cacheData.i, j: cacheData.j };
+  const rectCache: Cache = {
+    coins: [],
+    geoCache: cacheData,
+  };
+  for (let i = 0; i < cacheData.serials.length; i++) {
+    const rebuiltCoin: Coin = { cell: cell, serial: cacheData.serials[i] };
+    rectCache.coins.push(rebuiltCoin);
+  }
 
-            playerInventory.coins.push(splicedCoin);
-            inventoryDisplay.innerHTML = `Inventory:<br>`;
-            for (let i = 0; i < playerInventory.coins.length; i++) {
-              inventoryDisplay.innerHTML += `${
-                playerInventory.coins[i].cell.i
-              }${playerInventory.coins[i].cell.j}:${
-                playerInventory.coins[i].serial
-              }<br>`;
-            }
-          },
-        );
-        rectInfo.appendChild(container);
-      }
-      rectInfo.querySelector<HTMLButtonElement>("#Give")!.addEventListener(
+  addRectFunctionality(cell, rectCache);
+}
+
+function addRectFunctionality(obj: Cell, rectCache: Cache) {
+  const aBox = grid.getCellBounds(obj);
+
+  // create new cache if it does not already exist
+  rectArr.push(leaflet.rectangle(aBox, { color: "#483aea", weight: 1 }));
+  rectArr[rectArr.length - 1].addTo(map);
+
+  rectArr[rectArr.length - 1].bindPopup((): HTMLDivElement => {
+    const rectInfo = document.createElement("div");
+    rectInfo.innerHTML = `<div>Location:${Math.round(obj.i)}, ${
+      Math.round(obj.j)
+    }</div><button id=Give>Deposit</button><br>`;
+    for (let i = 0; i < rectCache.coins.length; i++) {
+      const container = document.createElement("div");
+
+      const serialString = `${rectCache.coins[i].cell.i}${
+        rectCache.coins[i].cell.j
+      }:${rectCache.coins[i].serial}`;
+
+      container.innerHTML = `${serialString} <button id=Take>Collect</button>`;
+      container.querySelector<HTMLButtonElement>("#Take")!.addEventListener(
         "click",
         () => {
-          if (playerInventory.coins.length) {
-            const popCoin = playerInventory.coins.pop()!;
-            rectCache.coins.push(popCoin);
-            rectCache.geoCache?.serials.push(
-              `${popCoin.cell.i}${popCoin.cell.j}:${popCoin.serial}`,
-            );
-            cacheMomentos.set(
-              `${obj.i}${obj.j}`,
-              rectCache.geoCache!.toMomento(),
-            );
-            inventoryDisplay.innerHTML = `Inventory:<br>`;
-            for (let i = 0; i < playerInventory.coins.length; i++) {
-              inventoryDisplay.innerHTML += `${
-                playerInventory.coins[i].cell.i
-              }${playerInventory.coins[i].cell.j}:${
-                playerInventory.coins[i].serial
-              }<br>`;
-            }
-            const container = document.createElement("div");
-            container.innerHTML =
-              `${popCoin.cell.i}${popCoin.cell.j}:${popCoin.serial} <button id=Take>Collect</button>`;
-            rectInfo.appendChild(container);
-            map.closePopup();
+          const splicedCoin = rectCache.coins.splice(i, 1)[0];
+          rectCache.geoCache?.serials.splice(i, 1);
+          cacheMomentos.set(
+            `${obj.i}${obj.j}`,
+            rectCache.geoCache!.toMomento(),
+          );
+          rectInfo.removeChild(container);
+
+          playerInventory.coins.push(splicedCoin);
+          inventoryDisplay.innerHTML = `Inventory:<br>`;
+          for (let i = 0; i < playerInventory.coins.length; i++) {
+            inventoryDisplay.innerHTML += `${playerInventory.coins[i].cell.i}${
+              playerInventory.coins[i].cell.j
+            }:${playerInventory.coins[i].serial}<br>`;
           }
         },
       );
-      return rectInfo;
-    });
-    cacheMomentos.set(`${obj.i}${obj.j}`, rectCache.geoCache!.toMomento());
-  } else {
-    console.log(cacheMomentos.get(`${obj.i}${obj.j}`));
-  }
+
+      rectInfo.appendChild(container);
+    }
+
+    rectInfo.querySelector<HTMLButtonElement>("#Give")!.addEventListener(
+      "click",
+      () => {
+        if (playerInventory.coins.length) {
+          const popCoin = playerInventory.coins.pop()!;
+          rectCache.coins.push(popCoin);
+          rectCache.geoCache?.serials.push(`${popCoin.serial}`);
+          cacheMomentos.set(
+            `${obj.i}${obj.j}`,
+            rectCache.geoCache!.toMomento(),
+          );
+          inventoryDisplay.innerHTML = `Inventory:<br>`;
+          for (let i = 0; i < playerInventory.coins.length; i++) {
+            inventoryDisplay.innerHTML += `${playerInventory.coins[i].cell.i}${
+              playerInventory.coins[i].cell.j
+            }:${playerInventory.coins[i].serial}<br>`;
+          }
+          const container = document.createElement("div");
+          container.innerHTML =
+            `${popCoin.cell.i}${popCoin.cell.j}:${popCoin.serial} <button id=Take>Collect</button>`;
+          rectInfo.appendChild(container);
+          map.closePopup();
+        }
+      },
+    );
+    return rectInfo;
+  });
+  cacheMomentos.set(`${obj.i}${obj.j}`, rectCache.geoCache!.toMomento());
 }
 
 // deterministic selection of which spots on the grid to put caches at
@@ -327,10 +337,18 @@ function determineCacheLocation(surroundingCells: Cell[]): void {
   for (let i = 0; i < surroundingCells.length; i++) {
     if (
       luck(
-        [surroundingCells[i].i * 1e-4, surroundingCells[i].j * 1e-4].toString(),
+        [surroundingCells[i].i * 1e-4, surroundingCells[i].j * 1e-4]
+          .toString(),
       ) < CACHE_PROBABILITY
     ) {
-      spawnCache(surroundingCells[i]);
+      const momentoCheck = cacheMomentos.get(
+        `${surroundingCells[i].i}${surroundingCells[i].j}`,
+      );
+      if (momentoCheck) {
+        respawnCache(momentoCheck);
+      } else {
+        spawnNewCache(surroundingCells[i]);
+      }
     }
   }
 }
