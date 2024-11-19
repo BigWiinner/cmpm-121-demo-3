@@ -35,23 +35,21 @@ interface Momento<T> {
 class Geocache implements Momento<string> {
   i: number;
   j: number;
-  numCoins: number;
-  constructor(i: number, j: number) {
+  serials: string[];
+  constructor(i: number, j: number, serials: string[]) {
     this.i = i;
     this.j = j;
-    this.numCoins = Math.floor(
-      luck([i, j, "initialValue"].toString()) * 10,
-    );
+    this.serials = serials;
   }
   toMomento(): string {
-    return JSON.stringify({ i: this.i, j: this.j, numCoins: this.numCoins });
+    return JSON.stringify({ i: this.i, j: this.j, serials: this.serials });
   }
 
   fromMomento(momento: string): void {
     const fromState = JSON.parse(momento);
     this.i = fromState.i;
     this.j = fromState.j;
-    this.numCoins = fromState.numCoins;
+    this.serials = fromState.serials;
   }
 }
 
@@ -133,6 +131,10 @@ document.querySelector<HTMLButtonElement>("#north")!.addEventListener(
       j: Math.floor(playerLocation.lng * 1e4),
     });
     const surroundingCells = grid.getCellsNearPoint(cell);
+    for (let i = 0; i < rectArr.length; i++) {
+      rectArr[i].remove();
+    }
+    rectArr = [];
     determineCacheLocation(surroundingCells);
   },
 );
@@ -154,6 +156,10 @@ document.querySelector<HTMLButtonElement>("#south")!.addEventListener(
       j: Math.floor(playerLocation.lng * 1e4),
     });
     const surroundingCells = grid.getCellsNearPoint(cell);
+    for (let i = 0; i < rectArr.length; i++) {
+      rectArr[i].remove();
+    }
+    rectArr = [];
     determineCacheLocation(surroundingCells);
   },
 );
@@ -175,6 +181,10 @@ document.querySelector<HTMLButtonElement>("#west")!.addEventListener(
       j: Math.floor(playerLocation.lng * 1e4),
     });
     const surroundingCells = grid.getCellsNearPoint(cell);
+    for (let i = 0; i < rectArr.length; i++) {
+      rectArr[i].remove();
+    }
+    rectArr = [];
     determineCacheLocation(surroundingCells);
   },
 );
@@ -196,34 +206,49 @@ document.querySelector<HTMLButtonElement>("#east")!.addEventListener(
       j: Math.floor(playerLocation.lng * 1e4),
     });
     const surroundingCells = grid.getCellsNearPoint(cell);
+    for (let i = 0; i < rectArr.length; i++) {
+      rectArr[i].remove();
+    }
+    rectArr = [];
     determineCacheLocation(surroundingCells);
   },
 );
 
 // create caches with unique coins
 let serialNum = 0;
+let rectArr: leaflet.Rectangle[] = [];
 const cacheMomentos: Map<string, string> = new Map();
 function spawnCache(obj: Cell): void {
   const aBox = grid.getCellBounds(obj);
-  if (!cacheMomentos.get(`${obj.i}${obj.j}`)) {
-    const rect = leaflet.rectangle(aBox, { color: "#483aea", weight: 1 });
-    rect.addTo(map);
 
-    const coinCount = Math.floor(
-      luck([obj.i, obj.j, "initialValue"].toString()) * 10,
-    );
-    const rectCache: Cache = {
-      coins: [],
-      geoCache: new Geocache(obj.i, obj.j),
-    };
-    cacheMomentos.set(`${obj.i}${obj.j}`, rectCache.geoCache!.toMomento());
+  // create new cache if it does not already exist
+  //if (!cacheMomentos.get(`${obj.i}${obj.j}`)) {
+  rectArr.push(leaflet.rectangle(aBox, { color: "#483aea", weight: 1 }));
+  rectArr[rectArr.length - 1].addTo(map);
+
+  const coinCount = Math.floor(
+    luck([obj.i, obj.j, "initialValue"].toString()) * 10,
+  );
+
+  const serialList: string[] = [];
+  const rectCache: Cache = {
+    coins: [],
+    geoCache: new Geocache(obj.i, obj.j, serialList),
+  };
+
+  if (!cacheMomentos.get(`${obj.i}${obj.j}`)) {
     for (let i = 0; i < coinCount; i++) {
       const coinIdentity: Coin = { cell: obj, serial: `${serialNum}` };
       serialNum++;
       rectCache.coins.push(coinIdentity);
+      rectCache.geoCache?.serials.push(
+        `${rectCache.coins[i].cell.i}${rectCache.coins[i].cell.j}:${
+          rectCache.coins[i].serial
+        }`,
+      );
+      cacheMomentos.set(`${obj.i}${obj.j}`, rectCache.geoCache!.toMomento());
     }
-
-    rect.bindPopup((): HTMLDivElement => {
+    rectArr[rectArr.length - 1].bindPopup((): HTMLDivElement => {
       const rectInfo = document.createElement("div");
       rectInfo.innerHTML = `<div>Location:${Math.round(obj.i)}, ${
         Math.round(obj.j)
@@ -240,6 +265,11 @@ function spawnCache(obj: Cell): void {
           "click",
           () => {
             const splicedCoin = rectCache.coins.splice(i, 1)[0];
+            rectCache.geoCache?.serials.splice(i, 1);
+            cacheMomentos.set(
+              `${obj.i}${obj.j}`,
+              rectCache.geoCache!.toMomento(),
+            );
             rectInfo.removeChild(container);
 
             playerInventory.coins.push(splicedCoin);
@@ -261,6 +291,13 @@ function spawnCache(obj: Cell): void {
           if (playerInventory.coins.length) {
             const popCoin = playerInventory.coins.pop()!;
             rectCache.coins.push(popCoin);
+            rectCache.geoCache?.serials.push(
+              `${popCoin.cell.i}${popCoin.cell.j}:${popCoin.serial}`,
+            );
+            cacheMomentos.set(
+              `${obj.i}${obj.j}`,
+              rectCache.geoCache!.toMomento(),
+            );
             inventoryDisplay.innerHTML = `Inventory:<br>`;
             for (let i = 0; i < playerInventory.coins.length; i++) {
               inventoryDisplay.innerHTML += `${
@@ -277,9 +314,11 @@ function spawnCache(obj: Cell): void {
           }
         },
       );
-
       return rectInfo;
     });
+    cacheMomentos.set(`${obj.i}${obj.j}`, rectCache.geoCache!.toMomento());
+  } else {
+    console.log(cacheMomentos.get(`${obj.i}${obj.j}`));
   }
 }
 
