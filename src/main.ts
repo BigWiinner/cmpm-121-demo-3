@@ -82,6 +82,15 @@ leaflet
   })
   .addTo(map);
 
+// spawn player at a predetermined spot.
+let playerLocation = leaflet.latLng(OAKES_CLASSROOM.lat, OAKES_CLASSROOM.lng);
+const playerIcon = leaflet.marker(playerLocation);
+playerIcon.addTo(map);
+playerIcon.bindPopup(
+  `Location: ${Math.round(playerLocation.lat * 1e4)}, 
+  ${Math.round(playerLocation.lng * 1e4)}`,
+);
+
 // create the player's inventory and display it as blank at
 // the bottom of the screen
 const playerInventory: Cache = {
@@ -90,16 +99,6 @@ const playerInventory: Cache = {
 };
 const inventoryDisplay = document.getElementById("inventory")!;
 inventoryDisplay.innerHTML = `Inventory:<br>`;
-
-// spawn player at a predetermined spot.
-// player controls to be implemented in D3.c
-let playerLocation = leaflet.latLng(OAKES_CLASSROOM.lat, OAKES_CLASSROOM.lng);
-const playerIcon = leaflet.marker(playerLocation);
-playerIcon.addTo(map);
-playerIcon.bindPopup(
-  `Location: ${Math.round(playerLocation.lat * 1e4)}, 
-  ${Math.round(playerLocation.lng * 1e4)}`,
-);
 
 // creates grid for caches to be placed on
 const origin = playerLocation;
@@ -142,23 +141,26 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
       container.innerHTML =
         `${serialString} <button id=Collect>Collect</button>`;
       // lets player collect coins from cache
-      container.querySelector<HTMLButtonElement>("#Collect")!.addEventListener(
-        "click",
-        () => {
-          const splicedCoin = rectCache.coins.splice(i, 1)[0];
-          rectCache.geoCache?.serials.splice(i, 1);
-          updateCacheMomentos(rectCell, rectCache);
-          rectInfo.removeChild(container);
+      container.querySelector<HTMLButtonElement>("#Collect")!
+        .addEventListener(
+          "click",
+          () => {
+            const splicedCoin = rectCache.coins.splice(i, 1)[0];
+            rectCache.geoCache?.serials.splice(i, 1);
+            updateCacheMomentos(rectCell, rectCache);
+            rectInfo.removeChild(container);
 
-          playerInventory.coins.push(splicedCoin);
-          inventoryDisplay.innerHTML = `Inventory:<br>`;
-          for (let i = 0; i < playerInventory.coins.length; i++) {
-            inventoryDisplay.innerHTML += `${playerInventory.coins[i].cell.i}${
-              playerInventory.coins[i].cell.j
-            }:${playerInventory.coins[i].serial}<br>`;
-          }
-        },
-      );
+            playerInventory.coins.push(splicedCoin);
+            inventoryDisplay.innerHTML = `Inventory:<br>`;
+            for (let i = 0; i < playerInventory.coins.length; i++) {
+              inventoryDisplay.innerHTML += `${
+                playerInventory.coins[i].cell.i
+              }${playerInventory.coins[i].cell.j}:${
+                playerInventory.coins[i].serial
+              }<br>`;
+            }
+          },
+        );
 
       rectInfo.appendChild(container);
     }
@@ -254,12 +256,16 @@ function determineCacheLocation(surroundingCells: Cell[]): void {
 }
 determineCacheLocation(surroundingCells);
 
-// create logic for player movement
-function playerMove(x: number, y: number) {
+function playerStep(x: number, y: number) {
   playerLocation = leaflet.latLng(
     playerLocation.lat + x,
     playerLocation.lng + y,
   );
+  movePlayer();
+}
+
+// create logic for player movement
+function movePlayer() {
   playerIcon.setLatLng(playerLocation);
   map.panTo(playerLocation);
   playerIcon.bindPopup(
@@ -278,28 +284,51 @@ function playerMove(x: number, y: number) {
   determineCacheLocation(surroundingCells);
 }
 
-// providecreate functionality to arrow buttons
+// provide functionality to arrow buttons
 document.querySelector<HTMLButtonElement>("#north")!.addEventListener(
   "click",
   () => {
-    playerMove(TILE_CELL_SIZE, 0);
+    playerStep(TILE_CELL_SIZE, 0);
   },
 );
 document.querySelector<HTMLButtonElement>("#south")!.addEventListener(
   "click",
   () => {
-    playerMove(-TILE_CELL_SIZE, 0);
+    playerStep(-TILE_CELL_SIZE, 0);
   },
 );
 document.querySelector<HTMLButtonElement>("#west")!.addEventListener(
   "click",
   () => {
-    playerMove(0, -TILE_CELL_SIZE);
+    playerStep(0, -TILE_CELL_SIZE);
   },
 );
 document.querySelector<HTMLButtonElement>("#east")!.addEventListener(
   "click",
   () => {
-    playerMove(0, TILE_CELL_SIZE);
+    playerStep(0, TILE_CELL_SIZE);
+  },
+);
+document.querySelector<HTMLButtonElement>("#sensor")!.addEventListener(
+  "click",
+  () => {
+    navigator.geolocation.watchPosition((position) => {
+      playerLocation = leaflet.latLng(
+        position.coords.latitude,
+        position.coords.longitude,
+      );
+      movePlayer();
+    });
+  },
+);
+document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
+  "click",
+  () => {
+    const query = prompt(
+      "Are you sure you want to reset? Type yes to reset.",
+    );
+    if (query?.toLowerCase() === "yes") {
+      console.log("RESTARTING"); // TODO
+    }
   },
 );
