@@ -41,6 +41,7 @@ class Geocache implements Momento<string> {
     this.j = j;
     this.serials = serials;
   }
+
   toMomento(): string {
     return JSON.stringify({ i: this.i, j: this.j, serials: this.serials });
   }
@@ -83,7 +84,12 @@ leaflet
   .addTo(map);
 
 // spawn player at a predetermined spot.
-let playerLocation = leaflet.latLng(OAKES_CLASSROOM.lat, OAKES_CLASSROOM.lng);
+const initialLocation = leaflet.latLng(
+  OAKES_CLASSROOM.lat,
+  OAKES_CLASSROOM.lng,
+);
+let playerLocation = loadPlayerLocation() || initialLocation;
+map.panTo(playerLocation);
 const playerIcon = leaflet.marker(playerLocation);
 playerIcon.addTo(map);
 playerIcon.bindPopup(
@@ -94,11 +100,20 @@ playerIcon.bindPopup(
 // create the player's inventory and display it as blank at
 // the bottom of the screen
 const playerInventory: Cache = {
-  coins: [],
+  coins: loadInventory() || [],
   geoCache: undefined,
 };
 const inventoryDisplay = document.getElementById("inventory")!;
-inventoryDisplay.innerHTML = `Inventory:<br>`;
+updateInventoryDisplay();
+
+function updateInventoryDisplay(): void {
+  inventoryDisplay.innerHTML = `Inventory:<br>`;
+  for (let i = 0; i < playerInventory.coins.length; i++) {
+    inventoryDisplay.innerHTML += `${playerInventory.coins[i].cell.i}${
+      playerInventory.coins[i].cell.j
+    }:${playerInventory.coins[i].serial}<br>`;
+  }
+}
 
 // creates grid for caches to be placed on
 const origin = playerLocation;
@@ -115,6 +130,7 @@ function updateCacheMomentos(rectCell: Cell, rectCache: Cache) {
     `${rectCell.i}${rectCell.j}`,
     rectCache.geoCache!.toMomento(),
   );
+  saveCaches();
 }
 
 let rectArr: leaflet.Rectangle[] = [];
@@ -151,14 +167,8 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
             rectInfo.removeChild(container);
 
             playerInventory.coins.push(splicedCoin);
-            inventoryDisplay.innerHTML = `Inventory:<br>`;
-            for (let i = 0; i < playerInventory.coins.length; i++) {
-              inventoryDisplay.innerHTML += `${
-                playerInventory.coins[i].cell.i
-              }${playerInventory.coins[i].cell.j}:${
-                playerInventory.coins[i].serial
-              }<br>`;
-            }
+            saveInventory();
+            updateInventoryDisplay();
           },
         );
 
@@ -174,12 +184,7 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
           rectCache.coins.push(popCoin);
           rectCache.geoCache?.serials.push(`${popCoin.serial}`);
           updateCacheMomentos(rectCell, rectCache);
-          inventoryDisplay.innerHTML = `Inventory:<br>`;
-          for (let i = 0; i < playerInventory.coins.length; i++) {
-            inventoryDisplay.innerHTML += `${playerInventory.coins[i].cell.i}${
-              playerInventory.coins[i].cell.j
-            }:${playerInventory.coins[i].serial}<br>`;
-          }
+          updateInventoryDisplay();
           const container = document.createElement("div");
           container.innerHTML =
             `${popCoin.cell.i}${popCoin.cell.j}:${popCoin.serial} <button id=Collect>Collect</button>`;
@@ -254,7 +259,52 @@ function determineCacheLocation(surroundingCells: Cell[]): void {
     }
   }
 }
+loadCaches();
 determineCacheLocation(surroundingCells);
+
+function savePlayerLocation(): void {
+  localStorage.setItem("playerLocation", JSON.stringify(playerLocation));
+}
+function loadPlayerLocation(): leaflet.LatLng | null {
+  const location = localStorage.getItem("playerLocation");
+  if (location) {
+    return leaflet.latLng(JSON.parse(location));
+  }
+  return null;
+}
+
+function saveInventory(): void {
+  localStorage.setItem("inventory", JSON.stringify(playerInventory.coins));
+}
+function loadInventory(): Coin[] | null {
+  const inventory = localStorage.getItem("inventory");
+  if (inventory) {
+    return JSON.parse(inventory);
+  }
+  return null;
+}
+
+// saveCaches and loadCaches functions provided by Brace when given the prompt:
+// "How should I go about saving the spawned caches into localstorage?"
+// https://chat.brace.tools/c/57469e1e-69d0-4921-9f69-7d286d2f67e2
+function saveCaches(): void {
+  const cacheObject: Record<string, string> = {};
+  cacheMomentos.forEach((momento, cellKey) => {
+    cacheObject[cellKey] = momento; // Flatten Map into Object
+  });
+  localStorage.setItem("cacheMomentos", JSON.stringify(cacheObject));
+}
+function loadCaches(): void {
+  const cacheData = localStorage.getItem("cacheMomentos");
+  if (cacheData) {
+    const cacheObject: Record<string, string> = JSON.parse(cacheData);
+    for (const cellKey in cacheObject) {
+      const momentoString = cacheObject[cellKey];
+      cacheMomentos.set(cellKey, momentoString);
+      respawnCache(momentoString); // Rebuild cache using your existing method
+    }
+  }
+}
 
 function playerStep(x: number, y: number) {
   playerLocation = leaflet.latLng(
@@ -282,6 +332,7 @@ function movePlayer() {
   }
   rectArr = [];
   determineCacheLocation(surroundingCells);
+  savePlayerLocation();
 }
 
 // provide functionality to arrow buttons
@@ -309,16 +360,23 @@ document.querySelector<HTMLButtonElement>("#east")!.addEventListener(
     playerStep(0, TILE_CELL_SIZE);
   },
 );
+
+let watchId: number | null;
 document.querySelector<HTMLButtonElement>("#sensor")!.addEventListener(
   "click",
   () => {
-    navigator.geolocation.watchPosition((position) => {
-      playerLocation = leaflet.latLng(
-        position.coords.latitude,
-        position.coords.longitude,
-      );
-      movePlayer();
-    });
+    if (watchId) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    } else {
+      watchId = navigator.geolocation.watchPosition((position) => {
+        playerLocation = leaflet.latLng(
+          position.coords.latitude,
+          position.coords.longitude,
+        );
+        movePlayer();
+      });
+    }
   },
 );
 document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
@@ -328,7 +386,22 @@ document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
       "Are you sure you want to reset? Type yes to reset.",
     );
     if (query?.toLowerCase() === "yes") {
-      console.log("RESTARTING"); // TODO
+      playerLocation = leaflet.latLng(OAKES_CLASSROOM);
+      movePlayer();
+      localStorage.removeItem("playerLocation");
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      playerInventory.coins = [];
+      updateInventoryDisplay();
+      localStorage.removeItem("inventory");
+
+      cacheMomentos.clear();
+      localStorage.removeItem("cacheMomentos");
+      rectArr.forEach((rect) => rect.remove());
+      rectArr = [];
+      location.reload();
     }
   },
 );
