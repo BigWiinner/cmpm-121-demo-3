@@ -156,6 +156,7 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
 
       container.innerHTML =
         `${serialString} <button id=Collect>Collect</button>`;
+
       // lets player collect coins from cache
       container.querySelector<HTMLButtonElement>("#Collect")!
         .addEventListener(
@@ -306,14 +307,6 @@ function loadCaches(): void {
   }
 }
 
-function playerStep(x: number, y: number) {
-  playerLocation = leaflet.latLng(
-    playerLocation.lat + x,
-    playerLocation.lng + y,
-  );
-  movePlayer();
-}
-
 // create logic for player movement
 function movePlayer() {
   playerIcon.setLatLng(playerLocation);
@@ -327,12 +320,18 @@ function movePlayer() {
     j: Math.floor(playerLocation.lng * 1e4),
   });
   const surroundingCells = grid.getCellsNearPoint(cell);
-  for (let i = 0; i < rectArr.length; i++) {
-    rectArr[i].remove();
-  }
+  rectArr.forEach((rect) => rect.remove());
   rectArr = [];
   determineCacheLocation(surroundingCells);
   savePlayerLocation();
+}
+
+function playerStep(x: number, y: number) {
+  playerLocation = leaflet.latLng(
+    playerLocation.lat + x,
+    playerLocation.lng + y,
+  );
+  movePlayer();
 }
 
 // provide functionality to arrow buttons
@@ -361,6 +360,7 @@ document.querySelector<HTMLButtonElement>("#east")!.addEventListener(
   },
 );
 
+// toggles automatic position updating based on the device's geolocation
 let watchId: number | null;
 document.querySelector<HTMLButtonElement>("#sensor")!.addEventListener(
   "click",
@@ -379,6 +379,8 @@ document.querySelector<HTMLButtonElement>("#sensor")!.addEventListener(
     }
   },
 );
+
+// resets program to initial state
 document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
   "click",
   () => {
@@ -386,6 +388,16 @@ document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
       "Are you sure you want to reset? Type yes to reset.",
     );
     if (query?.toLowerCase() === "yes") {
+      cacheMomentos.clear();
+      localStorage.removeItem("cacheMomentos");
+      rectArr.forEach((rect) => rect.remove());
+      rectArr = [];
+
+      serialNum = 0;
+      playerInventory.coins = [];
+      updateInventoryDisplay();
+      localStorage.removeItem("inventory");
+
       playerLocation = leaflet.latLng(OAKES_CLASSROOM);
       movePlayer();
       localStorage.removeItem("playerLocation");
@@ -393,15 +405,6 @@ document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
       }
-      playerInventory.coins = [];
-      updateInventoryDisplay();
-      localStorage.removeItem("inventory");
-
-      cacheMomentos.clear();
-      localStorage.removeItem("cacheMomentos");
-      rectArr.forEach((rect) => rect.remove());
-      rectArr = [];
-      location.reload();
     }
   },
 );
