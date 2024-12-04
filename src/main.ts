@@ -62,6 +62,7 @@ const GAMEPLAY_ZOOM_LEVEL = 18.75;
 const TILE_CELL_SIZE = 0.0001;
 const CACHE_PROBABILITY = 0.1;
 const CELL_BLOCKS = 8;
+const MAX_COINS = 5;
 
 // Generate map object
 const map = leaflet.map(document.getElementById("map")!, {
@@ -103,6 +104,7 @@ const playerInventory: Cache = {
   coins: loadInventory() || [],
   geoCache: undefined,
 };
+
 const inventoryDisplay = document.getElementById("inventory")!;
 updateInventoryDisplay();
 
@@ -203,8 +205,9 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
 let serialNum = 0;
 function spawnNewCache(rectCell: Cell): void {
   const coinCount = Math.floor(
-    luck([rectCell.i, rectCell.j, "initialValue"].toString()) * 10,
+    luck([rectCell.i, rectCell.j, "initialValue"].toString()) * (MAX_COINS + 1),
   );
+  console.log(coinCount);
 
   const serialList: string[] = [];
   const rectCache: Cache = {
@@ -242,20 +245,15 @@ function respawnCache(GeoString: string) {
 
 // deterministic selection of which spots on the grid to put caches at
 function determineCacheLocation(surroundingCells: Cell[]): void {
-  for (let i = 0; i < surroundingCells.length; i++) {
-    if (
-      luck(
-        [surroundingCells[i].i * 1e-4, surroundingCells[i].j * 1e-4]
-          .toString(),
-      ) < CACHE_PROBABILITY
-    ) {
+  for (const cell of surroundingCells) {
+    if (luck([cell.i * 1e-4, cell.j * 1e-4].toString()) < CACHE_PROBABILITY) {
       const momentoCheck = cacheMomentos.get(
-        `${surroundingCells[i].i}${surroundingCells[i].j}`,
+        `${cell.i}${cell.j}`,
       );
       if (momentoCheck) {
         respawnCache(momentoCheck);
       } else {
-        spawnNewCache(surroundingCells[i]);
+        spawnNewCache(cell);
       }
     }
   }
@@ -307,6 +305,18 @@ function loadCaches(): void {
   }
 }
 
+// draw lines representing player's movement on the map
+let moveHistory: leaflet.LatLng[] = [];
+let polyLine: leaflet.Polyline;
+function makePolyline(): void {
+  if (polyLine) {
+    map.removeLayer(polyLine);
+  }
+  polyLine = leaflet.polyline(moveHistory, {
+    color: "red",
+  }).addTo(map);
+}
+
 // create logic for player movement
 function movePlayer() {
   playerIcon.setLatLng(playerLocation);
@@ -324,7 +334,12 @@ function movePlayer() {
   rectArr = [];
   determineCacheLocation(surroundingCells);
   savePlayerLocation();
+  moveHistory.push(playerLocation);
+  if (moveHistory.length > 0) {
+    makePolyline();
+  }
 }
+movePlayer();
 
 function playerStep(x: number, y: number) {
   playerLocation = leaflet.latLng(
@@ -388,6 +403,9 @@ document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
       "Are you sure you want to reset? Type yes to reset.",
     );
     if (query?.toLowerCase() === "yes") {
+      moveHistory = [];
+      map.removeLayer(polyLine);
+
       cacheMomentos.clear();
       localStorage.removeItem("cacheMomentos");
       rectArr.forEach((rect) => rect.remove());
