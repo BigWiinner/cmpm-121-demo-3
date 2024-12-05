@@ -12,91 +12,49 @@ import "./leafletWorkaround.ts";
 import luck from "./luck.ts";
 
 // Represents geographic grid
-import { Board, Cell } from "./board.ts";
+import { Board } from "./board.ts";
 
-// use cell and serial to make serial number at caches
-interface Coin {
-  cell: Cell;
-  serial: string;
-}
+import { Cache, Cell, Coin, Geocache } from "./objects.ts";
 
-// generate coins with unique serial values
-interface Cache {
-  coins: Coin[];
-  geoCache: Geocache | undefined;
-}
+import {
+  loadCaches,
+  loadInventory,
+  saveCaches,
+  saveInventory,
+} from "./storage.ts";
 
-// use memento to save cache states
-interface Momento<T> {
-  toMomento(): T;
-  fromMomento(momento: T): void;
-}
-
-class Geocache implements Momento<string> {
-  i: number;
-  j: number;
-  serials: string[];
-  constructor(i: number, j: number, serials: string[]) {
-    this.i = i;
-    this.j = j;
-    this.serials = serials;
-  }
-
-  toMomento(): string {
-    return JSON.stringify({ i: this.i, j: this.j, serials: this.serials });
-  }
-
-  fromMomento(momento: string): void {
-    const fromState = JSON.parse(momento);
-    this.i = fromState.i;
-    this.j = fromState.j;
-    this.serials = fromState.serials;
-  }
-}
+import { PlayerController } from "./playerController.ts";
+import { MapService } from "./mapService.ts";
 
 // CMPM 121 lecture hall, used for the center of the map
 const OAKES_CLASSROOM = leaflet.latLng(36.9896, -122.0627);
 
 // Tunable parameters
-const GAMEPLAY_ZOOM_LEVEL = 18.75;
 const TILE_CELL_SIZE = 0.0001;
 const CACHE_PROBABILITY = 0.1;
 const CELL_BLOCKS = 8;
 const MAX_COINS = 5;
-
-// Generate map object
-const map = leaflet.map(document.getElementById("map")!, {
-  center: OAKES_CLASSROOM,
-  zoom: GAMEPLAY_ZOOM_LEVEL,
-  minZoom: GAMEPLAY_ZOOM_LEVEL,
-  maxZoom: GAMEPLAY_ZOOM_LEVEL,
-  zoomControl: true,
-  scrollWheelZoom: true,
-});
-
-// Generate tilemap layer for map.
-// This is the map visible to the user
-leaflet
-  .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution:
-      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  })
-  .addTo(map);
 
 // spawn player at a predetermined spot.
 const initialLocation = leaflet.latLng(
   OAKES_CLASSROOM.lat,
   OAKES_CLASSROOM.lng,
 );
-let playerLocation = loadPlayerLocation() || initialLocation;
-map.panTo(playerLocation);
-const playerIcon = leaflet.marker(playerLocation);
-playerIcon.addTo(map);
-playerIcon.bindPopup(
-  `Location: ${Math.round(playerLocation.lat * 1e4)}, 
-  ${Math.round(playerLocation.lng * 1e4)}`,
+const playerController = new PlayerController(initialLocation);
+const mapService = new MapService("map", playerController);
+mapService.updatePlayer(
+  playerController.getLocation(),
+  playerController.getMoveHistory(),
 );
+
+function handleMovement(x: number, y: number) {
+  playerController.step(x, y);
+  mapService.updatePlayer(
+    playerController.getLocation(),
+    playerController.getMoveHistory(),
+  );
+  centerGrid();
+}
 
 // create the player's inventory and display it as blank at
 // the bottom of the screen
@@ -118,13 +76,7 @@ function updateInventoryDisplay(): void {
 }
 
 // creates grid for caches to be placed on
-const origin = playerLocation;
 const grid = new Board(TILE_CELL_SIZE, CELL_BLOCKS);
-const cell = grid.getCellForPoint({
-  i: Math.floor(origin.lat * 1e4),
-  j: Math.floor(origin.lng * 1e4),
-});
-const surroundingCells = grid.getCellsNearPoint(cell);
 
 const cacheMomentos: Map<string, string> = new Map();
 function updateCacheMomentos(rectCell: Cell, rectCache: Cache) {
@@ -132,7 +84,7 @@ function updateCacheMomentos(rectCell: Cell, rectCache: Cache) {
     `${rectCell.i}${rectCell.j}`,
     rectCache.geoCache!.toMomento(),
   );
-  saveCaches();
+  saveCaches(cacheMomentos);
 }
 
 let rectArr: leaflet.Rectangle[] = [];
@@ -141,7 +93,7 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
 
   // create new cache if it does not already exist
   rectArr.push(leaflet.rectangle(aBox, { color: "#483aea", weight: 1 }));
-  rectArr[rectArr.length - 1].addTo(map);
+  rectArr[rectArr.length - 1].addTo(mapService.getMap());
 
   // show coins at cache
   rectArr[rectArr.length - 1].bindPopup((): HTMLDivElement => {
@@ -170,7 +122,7 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
             rectInfo.removeChild(container);
 
             playerInventory.coins.push(splicedCoin);
-            saveInventory();
+            saveInventory(playerInventory);
             updateInventoryDisplay();
           },
         );
@@ -192,7 +144,7 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
           container.innerHTML =
             `${popCoin.cell.i}${popCoin.cell.j}:${popCoin.serial} <button id=Collect>Collect</button>`;
           rectInfo.appendChild(container);
-          map.closePopup();
+          mapService.getMap().closePopup();
         }
       },
     );
@@ -201,13 +153,24 @@ function addRectFunctionality(rectCell: Cell, rectCache: Cache) {
   updateCacheMomentos(rectCell, rectCache);
 }
 
+function centerGrid(): void {
+  const location = playerController.getLocation();
+  const cell = grid.getCellForPoint({
+    i: Math.floor(location.lat * 1e4),
+    j: Math.floor(location.lng * 1e4),
+  });
+  const surroundingCells = grid.getCellsNearPoint(cell);
+  rectArr.forEach((rect) => rect.remove());
+  rectArr = [];
+  determineCacheLocation(surroundingCells);
+}
+
 // create caches with unique coins
 let serialNum = 0;
 function spawnNewCache(rectCell: Cell): void {
   const coinCount = Math.floor(
     luck([rectCell.i, rectCell.j, "initialValue"].toString()) * (MAX_COINS + 1),
   );
-  console.log(coinCount);
 
   const serialList: string[] = [];
   const rectCache: Cache = {
@@ -227,7 +190,7 @@ function spawnNewCache(rectCell: Cell): void {
   addRectFunctionality(rectCell, rectCache);
 }
 
-function respawnCache(GeoString: string) {
+export function respawnCache(GeoString: string) {
   const cacheData = new Geocache(0, 0, [""]);
   cacheData.fromMomento(GeoString);
   const cell: Cell = { i: cacheData.i, j: cacheData.j };
@@ -258,120 +221,32 @@ function determineCacheLocation(surroundingCells: Cell[]): void {
     }
   }
 }
-loadCaches();
-determineCacheLocation(surroundingCells);
-
-function savePlayerLocation(): void {
-  localStorage.setItem("playerLocation", JSON.stringify(playerLocation));
-}
-function loadPlayerLocation(): leaflet.LatLng | null {
-  const location = localStorage.getItem("playerLocation");
-  if (location) {
-    return leaflet.latLng(JSON.parse(location));
-  }
-  return null;
-}
-
-function saveInventory(): void {
-  localStorage.setItem("inventory", JSON.stringify(playerInventory.coins));
-}
-function loadInventory(): Coin[] | null {
-  const inventory = localStorage.getItem("inventory");
-  if (inventory) {
-    return JSON.parse(inventory);
-  }
-  return null;
-}
-
-// saveCaches and loadCaches functions provided by Brace when given the prompt:
-// "How should I go about saving the spawned caches into localstorage?"
-// https://chat.brace.tools/c/57469e1e-69d0-4921-9f69-7d286d2f67e2
-function saveCaches(): void {
-  const cacheObject: Record<string, string> = {};
-  cacheMomentos.forEach((momento, cellKey) => {
-    cacheObject[cellKey] = momento; // Flatten Map into Object
-  });
-  localStorage.setItem("cacheMomentos", JSON.stringify(cacheObject));
-}
-function loadCaches(): void {
-  const cacheData = localStorage.getItem("cacheMomentos");
-  if (cacheData) {
-    const cacheObject: Record<string, string> = JSON.parse(cacheData);
-    for (const cellKey in cacheObject) {
-      const momentoString = cacheObject[cellKey];
-      cacheMomentos.set(cellKey, momentoString);
-      respawnCache(momentoString); // Rebuild cache using your existing method
-    }
-  }
-}
-
-// draw lines representing player's movement on the map
-let moveHistory: leaflet.LatLng[] = [];
-let polyLine: leaflet.Polyline;
-function makePolyline(): void {
-  if (polyLine) {
-    map.removeLayer(polyLine);
-  }
-  polyLine = leaflet.polyline(moveHistory, {
-    color: "red",
-  }).addTo(map);
-}
-
-// create logic for player movement
-function movePlayer() {
-  playerIcon.setLatLng(playerLocation);
-  map.panTo(playerLocation);
-  playerIcon.bindPopup(
-    `Location: ${Math.round(playerLocation.lat * 1e4)}, 
-    ${Math.round(playerLocation.lng * 1e4)}`,
-  );
-  const cell = grid.getCellForPoint({
-    i: Math.floor(playerLocation.lat * 1e4),
-    j: Math.floor(playerLocation.lng * 1e4),
-  });
-  const surroundingCells = grid.getCellsNearPoint(cell);
-  rectArr.forEach((rect) => rect.remove());
-  rectArr = [];
-  determineCacheLocation(surroundingCells);
-  savePlayerLocation();
-  moveHistory.push(playerLocation);
-  if (moveHistory.length > 0) {
-    makePolyline();
-  }
-}
-movePlayer();
-
-function playerStep(x: number, y: number) {
-  playerLocation = leaflet.latLng(
-    playerLocation.lat + x,
-    playerLocation.lng + y,
-  );
-  movePlayer();
-}
+loadCaches(cacheMomentos);
+centerGrid();
 
 // provide functionality to arrow buttons
 document.querySelector<HTMLButtonElement>("#north")!.addEventListener(
   "click",
   () => {
-    playerStep(TILE_CELL_SIZE, 0);
+    handleMovement(TILE_CELL_SIZE, 0);
   },
 );
 document.querySelector<HTMLButtonElement>("#south")!.addEventListener(
   "click",
   () => {
-    playerStep(-TILE_CELL_SIZE, 0);
+    handleMovement(-TILE_CELL_SIZE, 0);
   },
 );
 document.querySelector<HTMLButtonElement>("#west")!.addEventListener(
   "click",
   () => {
-    playerStep(0, -TILE_CELL_SIZE);
+    handleMovement(0, -TILE_CELL_SIZE);
   },
 );
 document.querySelector<HTMLButtonElement>("#east")!.addEventListener(
   "click",
   () => {
-    playerStep(0, TILE_CELL_SIZE);
+    handleMovement(0, TILE_CELL_SIZE);
   },
 );
 
@@ -385,11 +260,16 @@ document.querySelector<HTMLButtonElement>("#sensor")!.addEventListener(
       watchId = null;
     } else {
       watchId = navigator.geolocation.watchPosition((position) => {
-        playerLocation = leaflet.latLng(
+        playerController.move(leaflet.latLng(
           position.coords.latitude,
           position.coords.longitude,
+        ));
+        console.log(playerController.getLocation());
+        mapService.updatePlayer(
+          playerController.getLocation(),
+          playerController.getMoveHistory(),
         );
-        movePlayer();
+        centerGrid();
       });
     }
   },
@@ -403,8 +283,14 @@ document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
       "Are you sure you want to reset? Type yes to reset.",
     );
     if (query?.toLowerCase() === "yes") {
-      moveHistory = [];
-      map.removeLayer(polyLine);
+      playerController.clearMoveHistory();
+      playerController.move(OAKES_CLASSROOM);
+
+      mapService.updatePlayer(
+        playerController.getLocation(),
+        playerController.getMoveHistory(),
+      );
+      mapService.clearPolyline();
 
       cacheMomentos.clear();
       localStorage.removeItem("cacheMomentos");
@@ -416,13 +302,13 @@ document.querySelector<HTMLButtonElement>("#reset")!.addEventListener(
       updateInventoryDisplay();
       localStorage.removeItem("inventory");
 
-      playerLocation = leaflet.latLng(OAKES_CLASSROOM);
-      movePlayer();
       localStorage.removeItem("playerLocation");
       if (watchId) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
       }
+
+      centerGrid();
     }
   },
 );

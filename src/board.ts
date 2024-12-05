@@ -1,9 +1,6 @@
 import leaflet from "leaflet";
 
-export interface Cell {
-  readonly i: number;
-  readonly j: number;
-}
+import { Cell } from "./objects.ts";
 
 export class Board {
   readonly tileWidth: number;
