@@ -2,8 +2,6 @@ import leaflet from "leaflet";
 
 import { Cache, Coin } from "./objects.ts";
 
-import { respawnCache } from "./main.ts";
-
 export function savePlayerLocation(playerLocation: leaflet.LatLng): void {
   localStorage.setItem("playerLocation", JSON.stringify(playerLocation));
 }
@@ -43,7 +41,6 @@ export function loadCaches(cacheMomentos: Map<string, string>): void {
     for (const cellKey in cacheObject) {
       const momentoString = cacheObject[cellKey];
       cacheMomentos.set(cellKey, momentoString);
-      respawnCache(momentoString); // Rebuild cache using your existing method
     }
   }
 }
